@@ -1,3 +1,26 @@
+"""
+Builds the per-model FAISS indices and LightGBM rankers that the Streamlit
+UI's model registry (ui/data_access.py) needs for the 5-way comparison
+screen: one FAISS index + ranker per embedding-based model (two-tower,
+SASRec), built from real trained embeddings.
+
+This is distinct from scripts/build_serving_artifacts.py, which builds a
+single production index/ranker (fixed filenames items.index,
+lightgbm_ranker.txt) for FastAPI's one-model serving path. This script
+builds per-model-named artifacts (two_tower_items.index,
+two_tower_ranker.txt, sasrec_items.index, sasrec_ranker.txt) so the UI can
+compare all embedding-based models side by side.
+
+Run this any time you replace the embedding parquet files in
+data/processed/ (e.g. after downloading a new Kaggle-trained run) --
+stale FAISS indices built from old embeddings will raise a FAISS
+dimension-mismatch assertion if queried with vectors of a different size
+than what the index was built with.
+
+Usage:
+    python scripts/build_ui_artifacts.py
+"""
+
 import random
 import sys
 from pathlib import Path

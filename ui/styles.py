@@ -1,31 +1,38 @@
 """
 Design tokens and custom CSS for the Streamlit UI. Cinema/film-reel
-aesthetic grounded in the subject (MovieLens): warm charcoal, marquee gold,
-velvet red, a sprocket-rail divider as the signature element, and a fixed
-per-model color identity used consistently across every screen.
+aesthetic grounded in the subject (MovieLens): warm paper white, deep
+brass gold, burgundy, a sprocket-rail divider as the signature element,
+and a fixed per-model color identity used consistently across every screen.
+
+Light theme, not the more common cream+terracotta pairing: warm paper
+background (not stark white), true white cards for elevation, and
+deepened/saturated accent colors (brass instead of bright gold, forest
+green instead of pastel) so everything stays legible against a light
+background rather than washing out.
 """
 
 COLORS = {
-    "bg_primary": "#101014",
-    "bg_surface": "#17181D",
-    "bg_surface_raised": "#1E2027",
-    "accent_marquee": "#E8A33D",
-    "accent_velvet": "#8C3B3B",
-    "text_primary": "#F2EFE6",
-    "text_muted": "#8B8D98",
-    "border_subtle": "#26282F",
-    "positive": "#6FCF97",
+    "bg_primary": "#FAF8F4",
+    "bg_surface": "#FFFFFF",
+    "bg_surface_raised": "#F3F0E9",
+    "accent_marquee": "#B8752A",
+    "accent_velvet": "#7A2E2E",
+    "text_primary": "#211E1A",
+    "text_muted": "#6E685F",
+    "border_subtle": "#E6E0D4",
+    "positive": "#2F7A4F",
 }
 
 # Fixed per-model identity, used consistently across all three screens so a
-# user learns to recognize "gold = two-tower" the same way they'd recognize
-# a labeled film reel.
+# user learns to recognize "brass = two-tower" the same way they'd recognize
+# a labeled film reel. Deepened versions of the dark theme's hues, so each
+# stays legible against a light background instead of washing out.
 MODEL_COLORS = {
-    "popularity": "#8B8D98",
-    "item_item_cf": "#5B8DBF",
-    "als": "#6FA37A",
-    "two_tower": "#E8A33D",
-    "sasrec": "#B5679A",
+    "popularity": "#6E685F",
+    "item_item_cf": "#2F5F8A",
+    "als": "#3F7A52",
+    "two_tower": "#B8752A",
+    "sasrec": "#8A4A73",
 }
 
 MODEL_LABELS = {
@@ -99,10 +106,12 @@ h1, h2, h3 {{
     border-radius: 6px;
     padding: 1.1rem 1.3rem;
     margin-bottom: 0.9rem;
+    box-shadow: 0 1px 2px rgba(33, 30, 26, 0.04);
 }}
 
 .mc-card:hover {{
-    border-color: {COLORS['accent_marquee']}55;
+    border-color: {COLORS['accent_marquee']}77;
+    box-shadow: 0 2px 8px rgba(33, 30, 26, 0.08);
 }}
 
 .mc-score {{
@@ -139,6 +148,7 @@ h1, h2, h3 {{
     border-radius: 6px;
     padding: 1rem 1.1rem;
     height: 100%;
+    box-shadow: 0 1px 2px rgba(33, 30, 26, 0.04);
 }}
 
 .mc-persona-name {{
@@ -231,6 +241,27 @@ div[data-testid="stSlider"] > div > div > div > div {{
 sibling div -- target via the label's data-selected state for the "on" color. */
 label:has(input[role="switch"]:checked) > div:nth-of-type(1) {{
     background-color: {COLORS['accent_marquee']} !important;
+}}
+
+/* Sidebar nav radio defaults to Streamlit's red accent for the selected
+dot -- recolor to match the rest of the token system. The visible dot is
+actually two layered divs: an outer "ring" div with the red background,
+and a smaller empty leaf div centered inside it. Both need recoloring, or
+the red ring shows through around the edges. Auto-generated Streamlit
+class names aren't stable across versions, so both are targeted
+structurally instead of by class. */
+label[data-testid="stRadioOption"][data-selected="true"] div:has(> div:not(:has(*))) {{
+    background-color: {COLORS['accent_marquee']} !important;
+}}
+
+label[data-testid="stRadioOption"][data-selected="true"] div:not(:has(*)) {{
+    background-color: {COLORS['accent_marquee']} !important;
+    border-color: {COLORS['accent_marquee']} !important;
+}}
+
+label[data-testid="stRadioOption"][data-selected="true"] svg circle {{
+    fill: {COLORS['accent_marquee']} !important;
+    stroke: {COLORS['accent_marquee']} !important;
 }}
 </style>
 """

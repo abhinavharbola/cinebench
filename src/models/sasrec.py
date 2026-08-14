@@ -14,6 +14,7 @@ padding token (0 never occurs as a real item id after this shift).
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 import torch
 from torch import nn
@@ -251,3 +252,13 @@ def export_embeddings(
     user_df.write_parquet(output_dir / "sasrec_user_embeddings.parquet")
     item_df.write_parquet(output_dir / "sasrec_item_embeddings.parquet")
     print(f"exported {len(user_ids)} user and {len(item_ids_sorted)} item embeddings to {output_dir}")
+
+    # Safety net: catches a NaN regression immediately at export time
+    # instead of it surfacing three steps downstream as an opaque FAISS/
+    # ranker crash (a NaN embedding makes FAISS return zero search results,
+    # which build_training_table now skips silently -- fine for one bad
+    # user, but worth a loud warning if it happens at all).
+    n_nan_users = int(np.isnan(np.array(user_embs)).any(axis=1).sum())
+    if n_nan_users > 0:
+        print(f"WARNING: {n_nan_users} of {len(user_ids)} exported user embeddings contain NaN. "
+              f"Run scripts/check_embeddings_for_nan.py on the output to identify affected users.")

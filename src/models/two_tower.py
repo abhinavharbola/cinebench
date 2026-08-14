@@ -227,3 +227,8 @@ def export_embeddings(model: TwoTowerModel, id_maps: IdMaps, output_dir: Path, d
     user_df.write_parquet(output_dir / "two_tower_user_embeddings.parquet")
     item_df.write_parquet(output_dir / "two_tower_item_embeddings.parquet")
     print(f"exported {len(user_ids_sorted)} user and {len(item_ids_sorted)} item embeddings to {output_dir}")
+
+    n_nan_users = int(np.isnan(user_emb).any(axis=1).sum())
+    if n_nan_users > 0:
+        print(f"WARNING: {n_nan_users} of {len(user_ids_sorted)} exported user embeddings contain NaN. "
+              f"Run scripts/check_embeddings_for_nan.py on the output to identify affected users.")
