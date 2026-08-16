@@ -28,14 +28,13 @@ def render():
                         <div class="mc-persona-icon">{icon}</div>
                         <div class="mc-persona-name">{persona['name']}</div>
                         <div class="mc-persona-desc">{persona['description']}</div>
-                        <div style="margin-top:0.7rem;">
+                        <div class="mc-persona-tags">
                             {''.join(f'<span class="mc-genre-tag">{g}</span>' for g in top_genres)}
                         </div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
-                st.write("")
                 if st.button("View recommendations", key=f"persona_{i}", use_container_width=True):
                     st.session_state["selected_user_id"] = persona["user_id"]
                     st.session_state["selected_label"] = persona["name"]

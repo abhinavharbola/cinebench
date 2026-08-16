@@ -1,54 +1,67 @@
 """
-Design tokens and custom CSS for the Streamlit UI. Cinema/film-reel
-aesthetic grounded in the subject (MovieLens): warm paper white, deep
-brass gold, burgundy, a sprocket-rail divider as the signature element,
-and a fixed per-model color identity used consistently across every screen.
+Design tokens and custom CSS for the Streamlit UI.
 
-Light theme, not the more common cream+terracotta pairing: warm paper
-background (not stark white), true white cards for elevation, and
-deepened/saturated accent colors (brass instead of bright gold, forest
-green instead of pastel) so everything stays legible against a light
-background rather than washing out.
+Palette: "archive ledger" -- burnt clay/terracotta + deep ink-teal + moss +
+plum, on a cool pale-grey paper background. Deliberately not the
+cream-and-gold/burgundy combination that shows up on most AI-generated
+"warm editorial" sites; the cooler grey paper and teal/clay/moss/plum
+accent family reads more like a film-archive catalog card than a generic
+blog theme, while staying a genuine light theme (true-white surfaces for
+elevation, dark text, no inverted panels).
+
+A sprocket-rail divider (a row of film-perforation dots) is the signature
+structural element, and every model has a fixed color identity used
+consistently across all three screens.
 
 Token scale: colors, spacing, and radii are named and reused everywhere
 below rather than hardcoded per rule, so the theme can be retuned in one
 place -- this file -- without hunting through every screen's markdown.
+
+Pairs with .streamlit/config.toml, which pins Streamlit's own [theme] base
+to these same values. Without that file, Streamlit falls back to the
+browser/OS's preferred color scheme for every native widget this file
+doesn't explicitly override (dataframe, alerts, expanders, disabled
+states, tooltips...) -- on a dark-mode system that makes large parts of
+the UI render dark-on-dark or light-on-light regardless of what's set
+here. The config.toml is not optional decoration, it's the fix for that.
 """
 
 COLORS = {
-    "bg_primary": "#F7F5F0",
+    "bg_primary": "#F0EEE4",
     "bg_surface": "#FFFFFF",
-    "bg_surface_raised": "#F1EDE3",
-    "accent_marquee": "#9C5A1E",
-    "accent_marquee_soft": "#C98A3E",
-    "accent_velvet": "#6E2A2A",
-    "accent_ink": "#22303F",
-    "text_primary": "#1C1A16",
-    "text_muted": "#69635A",
-    "text_faint": "#95907F",
-    "border_subtle": "#E4DECF",
-    "border_strong": "#D6CDB8",
-    "positive": "#2F7A4F",
-    "warning": "#A66A1E",
+    "bg_surface_raised": "#E7E3D4",
+    "accent_marquee": "#B14A24",
+    "accent_marquee_soft": "#D97C4A",
+    "accent_velvet": "#1E4A47",
+    "accent_ink": "#16211F",
+    "text_primary": "#201E18",
+    "text_muted": "#5F5A4C",
+    "text_faint": "#8C8676",
+    "border_subtle": "#DBD5C3",
+    "border_strong": "#C7BFA8",
+    "positive": "#3C7A52",
+    "warning": "#B07A1E",
 }
 
 RADIUS = {"sm": "6px", "md": "10px", "lg": "16px"}
 SHADOW = {
-    "card": "0 1px 2px rgba(28, 26, 22, 0.05)",
-    "card_hover": "0 4px 14px rgba(28, 26, 22, 0.09)",
-    "raised": "0 2px 8px rgba(28, 26, 22, 0.06)",
+    "card": "0 1px 2px rgba(22, 20, 15, 0.06)",
+    "card_hover": "0 4px 14px rgba(22, 20, 15, 0.10)",
+    "raised": "0 2px 8px rgba(22, 20, 15, 0.07)",
 }
 
 # Fixed per-model identity, used consistently across all three screens so a
-# user learns to recognize "brass = two-tower" the same way they'd recognize
-# a labeled film reel. Deepened versions of the dark theme's hues, so each
-# stays legible against a light background instead of washing out.
+# user learns to recognize "clay = two-tower" the same way they'd recognize
+# a labeled film reel. Five hues drawn from the same family as the page
+# accents (clay, ink-teal, moss, plum) plus a neutral for the popularity
+# baseline, kept far enough apart in hue that they stay distinguishable on
+# both the bar chart and the small color-dot chips.
 MODEL_COLORS = {
-    "popularity": "#6E685F",
-    "item_item_cf": "#2F5F8A",
-    "als": "#3F7A52",
-    "two_tower": "#B8752A",
-    "sasrec": "#8A4A73",
+    "popularity": "#6B6558",
+    "item_item_cf": "#2F6E72",
+    "als": "#5C7A3F",
+    "two_tower": "#B14A24",
+    "sasrec": "#7A3B5E",
 }
 
 MODEL_LABELS = {
@@ -76,7 +89,7 @@ html, body, [class*="css"] {{
 
 .block-container {{
     max-width: 1180px;
-    padding-top: 2.2rem;
+    padding-top: 3.4rem;
 }}
 
 section[data-testid="stSidebar"] {{
@@ -228,12 +241,20 @@ h1, h2, h3 {{
     border-bottom: 2px solid;
 }}
 
+/* Fixed height + flex column, not height:100% -- height:100% only matches
+whatever the immediate wrapper happens to be, which sizes to its own
+content, so cards with a longer description grew taller than their
+neighbors and threw off row alignment. A fixed height with the tag row
+pinned to the bottom via margin-top:auto keeps every card in a row
+identical regardless of description length. */
 .mc-persona-card {{
     background-color: {COLORS['bg_surface']};
     border: 1px solid {COLORS['border_subtle']};
     border-radius: {RADIUS['md']};
     padding: 1.1rem 1.2rem;
-    height: 100%;
+    height: 232px;
+    display: flex;
+    flex-direction: column;
     box-shadow: {SHADOW['card']};
     transition: box-shadow 0.15s ease, transform 0.15s ease;
 }}
@@ -262,6 +283,18 @@ h1, h2, h3 {{
     color: {COLORS['text_muted']};
     margin-top: 0.3rem;
     line-height: 1.45;
+    /* clamp to 3 lines instead of letting description length drive card
+    height -- the fixed-height card above is what actually guarantees
+    alignment, this just keeps long descriptions from overflowing it */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}}
+
+.mc-persona-tags {{
+    margin-top: auto;
+    padding-top: 0.6rem;
 }}
 
 /* KPI summary cards -- dashboard headline numbers */
@@ -394,7 +427,7 @@ span[data-baseweb="tag"] {{
 }}
 
 /* Slider and toggle default to Streamlit's red accent -- recolor to the
-marquee gold so every interactive control matches the token system. */
+clay accent so every interactive control matches the token system. */
 div[data-testid="stSlider"] div[role="slider"] {{
     background-color: {COLORS['accent_marquee']} !important;
     border-color: {COLORS['accent_marquee']} !important;
@@ -429,6 +462,56 @@ label[data-testid="stRadioOption"][data-selected="true"] div:not(:has(*)) {{
 label[data-testid="stRadioOption"][data-selected="true"] svg circle {{
     fill: {COLORS['accent_marquee']} !important;
     stroke: {COLORS['accent_marquee']} !important;
+}}
+
+/* Dataframe (the comparison table) -- explicit surface/text colors rather
+than trusting the browser theme, since the grid/header/cell shading is
+otherwise one of the widgets most likely to inherit a dark-mode palette. */
+div[data-testid="stDataFrame"] {{
+    background-color: {COLORS['bg_surface']};
+    border: 1px solid {COLORS['border_subtle']};
+    border-radius: {RADIUS['sm']};
+}}
+
+div[data-testid="stDataFrame"] [role="columnheader"] {{
+    background-color: {COLORS['bg_surface_raised']} !important;
+    color: {COLORS['text_primary']} !important;
+}}
+
+div[data-testid="stDataFrame"] [role="gridcell"] {{
+    background-color: {COLORS['bg_surface']} !important;
+    color: {COLORS['text_primary']} !important;
+}}
+
+/* Alerts (st.success / st.info / st.warning / st.error) and captions --
+Streamlit's own semantic colors are fine, but the surrounding text/icon
+color and border can otherwise default to the OS theme. */
+div[data-testid="stAlert"] {{
+    color: {COLORS['text_primary']};
+    border: 1px solid {COLORS['border_subtle']};
+}}
+
+div[data-testid="stCaptionContainer"], .stCaption {{
+    color: {COLORS['text_muted']} !important;
+}}
+
+/* Expanders and popovers (help tooltips) -- same reasoning as alerts. */
+div[data-testid="stExpander"] {{
+    background-color: {COLORS['bg_surface']};
+    border: 1px solid {COLORS['border_subtle']};
+}}
+
+div[data-baseweb="tooltip"] {{
+    background-color: {COLORS['accent_ink']} !important;
+    color: {COLORS['bg_primary']} !important;
+}}
+
+/* Multiselect chips (dashboard's "Metrics to chart" picker) render via a
+BaseWeb tag component that ships its own default palette -- pin text
+color explicitly since it's easy to end up with dark text on the dark
+tag background above. */
+span[data-baseweb="tag"] span {{
+    color: {COLORS['bg_primary']} !important;
 }}
 </style>
 """
