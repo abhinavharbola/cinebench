@@ -12,20 +12,6 @@ The evaluation comparison table is the centerpiece deliverable, not the model co
   <sub><em>Screen 1, curated personas (genre-profiled real users) or browse by any real MovieLens user ID.</em></sub>
 </p>
 
-<p align="center">
-  <img src="docs/screenshots/ui-recommendations.png" width="720" alt="Streamlit UI showing 5 columns of movie recommendations, one per approach, color-coded by model">
-  <br>
-  <sub><em>Screen 2, side-by-side comparison across all 5 approaches, ranked by score where the model produces one, by rank where it doesn't.</em></sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/ui-dashboard.png" width="720" alt="Streamlit UI showing the model performance dashboard with bar charts and a full comparison table">
-  <br>
-  <sub><em>Screen 3, read-only performance dashboard, sourced directly from results/comparison_table.csv, no recomputation in the UI.</em></sub>
-</p>
-
-*(Save your own screenshots to `docs/screenshots/` under the filenames above, this section is a placeholder until then.)*
-
 ## What this is
 
 Given the MovieLens 25M dataset, the pipeline:
@@ -151,9 +137,12 @@ recsys-movielens/
 │   └── serving/                   # FastAPI app
 ├── ui/
 │   ├── app.py                    # Streamlit entrypoint, run: streamlit run ui/app.py
+│   ├── components.py             # shared page header, KPI cards, empty states, genre icons
 │   ├── data_access.py
-│   ├── styles.py
+│   ├── styles.py                 # design tokens + custom CSS, "marquee" palette
 │   └── screens/                  # persona selector, recommendations, dashboard
+├── .streamlit/
+│   └── config.toml                # pins Streamlit's native theme to match ui/styles.py
 ├── scripts/
 │   ├── run_phase1.py                    # ingest → split → baselines → harness
 │   ├── train_two_tower.py               # Colab/Kaggle entrypoint

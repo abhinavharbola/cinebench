@@ -11,22 +11,27 @@ import streamlit.components.v1 as components
 
 from ui.styles import COLORS, MODEL_COLORS
 
-# Simple, tasteful glyphs per persona-defining genre. Not meant to be a
-# full genre taxonomy -- just enough visual distinction on the persona
-# cards that a screen scanned quickly still differentiates "Action Fan"
-# from "Comedy Regular" before reading the label.
+# Icons drawn from the Miscellaneous Symbols / Dingbats / Geometric Shapes
+# Unicode blocks (the same family crossed-swords and comet already came
+# from), not the newer full-color emoji blocks. These default to plain
+# monochrome glyph presentation without a variation selector, so they read
+# as typographic symbols rather than cartoon pictures -- consistent with
+# the app's editorial mono/serif type pairing elsewhere. Not a literal
+# icon per genre in every case (there's no equivalent-weight symbol for
+# "drama masks" in this family), prioritizing visual consistency across
+# the full set over a literal pictogram for each one.
 GENRE_ICONS = {
     "Action": "\u2694",       # crossed swords
-    "Drama": "\U0001F3AD",     # masks
-    "Comedy": "\U0001F3AA",    # circus tent
+    "Drama": "\u2021",        # double dagger (typesetting mark, editorial)
+    "Comedy": "\u263A",       # white smiling face
     "Sci-Fi": "\u2604",       # comet
-    "Romance": "\u2764",       # heart
-    "Horror": "\U0001F480",    # skull
-    "Thriller": "\U0001F50D",  # magnifier
-    "Documentary": "\U0001F3A5",  # camera
-    "Animation": "\u2728",     # sparkles
+    "Romance": "\u2764",      # heavy black heart
+    "Horror": "\u2620",       # skull and crossbones
+    "Thriller": "\u25CE",     # bullseye
+    "Documentary": "\u25C9",  # fisheye (lens)
+    "Animation": "\u2726",    # black four pointed star
 }
-DEFAULT_GENRE_ICON = "\U0001F3AC"  # clapper board
+DEFAULT_GENRE_ICON = "\u25B6"  # black right-pointing triangle (play)
 
 
 def genre_icon(genre: str) -> str:

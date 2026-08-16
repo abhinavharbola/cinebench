@@ -85,10 +85,10 @@ def render():
         )
         return
 
-    label = st.session_state.get("selected_label", f"User {user_id}")
-    st.write(f"Showing recommendations for **{label}**.")
-    st.markdown('<div class="mc-sprocket"></div>', unsafe_allow_html=True)
-
+    # No "Showing recommendations for X" line here -- the sidebar already
+    # shows the current viewer (see ui/app.py), repeating it here was
+    # redundant, and it also left two sprocket dividers stacked right next
+    # to each other with barely any content between them.
     registry = load_model_registry()
     available_models = [m for m in MODEL_LABELS if m in registry]
 

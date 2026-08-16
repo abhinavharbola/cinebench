@@ -12,7 +12,6 @@ data/processed/*
 mlruns/
 mlartifacts/
 mlflow.db
-
 # Streamlit -- config.toml (theme) is committed on purpose, secrets.toml
 # never should be, it's the file st.secrets reads local API keys/credentials
 # from (e.g. a Gemini key for scripts/run_cold_start.py, if you keep one
