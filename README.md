@@ -77,7 +77,7 @@ flowchart TD
 | Item-Item CF | scipy sparse | CPU, local | Cosine similarity computed in row-blocks with a bounded top-K per item, a naive dense 40k×40k similarity matrix would exceed 15GB and blow the 16GB RAM budget. |
 | ALS / BPR | `implicit` | CPU, local | Matrix factorization; whichever of the two the run is configured for. |
 | Two-Tower | PyTorch | Colab/Kaggle GPU | User + item towers, in-batch negative sampling. Checkpointed every epoch, free-tier sessions can disconnect without warning, so training always resumes from the last saved epoch rather than assuming one uninterrupted run. |
-| SASRec | PyTorch | Colab/Kaggle GPU | Causal self-attention over each user's chronological sequence, next-item prediction. Same checkpoint-resume discipline as the two-tower model. |
+| SASRec | PyTorch | Colab/Kaggle GPU | Causal self-attention over each user's chronological sequence, next-item prediction. Same checkpoint-resume discipline as the two-tower model. Fixed masking bug (see below): the causal+padding mask used to produce NaN hidden states for any sequence shorter than `max_seq_len`, i.e. nearly every user. |
 
 ## Evaluation harness
 
@@ -94,8 +94,30 @@ A few specific failure modes this pipeline was built and tested to survive, not 
 
 - **RAM-safe item-item CF**, sparse similarity computed in row-blocks, top-K bounded per item, verified to stay under 200MB at 8k items / 112k interactions rather than the ~15GB a naive dense matrix would need at full catalog scale.
 - **Split leakage**, a single global timestamp cutoff, not a per-user-only split; unit-tested against a synthetic dataset specifically constructed so a per-user split would pass but a global-cutoff check would catch the leak.
-- **NaN embeddings degrade gracefully, everywhere**, a malformed embedding (verified against an actual PyTorch mask-dtype bug that produced this in practice) makes FAISS return zero search results for that one user. The ranker-training step skips that user instead of crashing a multi-million-row build; the live serving/UI query path returns an empty recommendation list instead of raising. Both paths verified against real injected-NaN data, not just reasoned about.
+- **NaN embeddings degrade gracefully, everywhere**, a malformed embedding makes FAISS return zero search results for that one user. The ranker-training step skips that user instead of crashing a multi-million-row build; the live serving/UI query path returns an empty recommendation list instead of raising. Both paths verified against real injected-NaN data, not just reasoned about. This graceful-degradation path exists because, historically, `check_embeddings_for_nan.py` had something real to catch: SASRec's attention masking had a bug that produced NaN hidden states for any sequence shorter than `max_seq_len`, close to every user (see "SASRec masking fix" below). That root cause is now fixed, not just degraded around, but the defensive skip/empty-list handling stays in place, a clean embedding pipeline shouldn't need it, but nothing downstream should trust that blindly either.
 - **Checkpoint resume**, both neural models save every epoch and resume from the last completed one on restart, including the embedding dimension and full ID-to-index mapping, so a resumed run can't silently reconstruct the model with mismatched shapes.
+
+## SASRec masking fix
+
+`src/models/sasrec.py`'s attention masking used to pass a causal mask and a padding mask to `nn.TransformerEncoder` separately and let PyTorch combine them. That combination gives a padding query position zero valid keys (a fully-masked attention row), so softmax produces NaN there. With this model's 2 encoder layers, that NaN becomes a *key's value* for real (non-padded) positions in the next layer, and even though the attention weight assigned to a NaN key is correctly ~0, the weighted sum is still NaN, `0 * NaN = NaN` in IEEE floating point regardless of how small the weight is. Confirmed empirically: every sequence length except a perfectly full `max_seq_len` (i.e. nearly every real user) hit this, corrupting both training (NaN loss/gradients on nearly every batch) and `export_embeddings` output.
+
+Fixed by building one explicit combined mask (`build_attention_mask` in `src/models/sasrec.py`) that always leaves a position's own diagonal entry unmasked. This is a no-op for real positions, but guarantees no attention row is ever fully masked, so no NaN is produced in the first place, verified bit-identical to the old output wherever the old output wasn't NaN, and NaN-free across every sequence length from 1 through `max_seq_len` after the fix.
+
+**If you already have a checkpoint trained with the old code**, the bug lives in the forward pass, not necessarily in the trained weights, check before retraining:
+```bash
+python -c "
+import torch
+ckpt = torch.load('path/to/sasrec.pt', map_location='cpu', weights_only=False)
+nan_params = [k for k, v in ckpt['model_state'].items() if torch.isnan(v).any()]
+print('NaN parameters:', nan_params or 'none')
+"
+```
+If that prints `none`, the weights are fine, just re-export:
+```bash
+python scripts/reexport_sasrec_embeddings.py --checkpoint-path path/to/sasrec.pt
+python scripts/check_embeddings_for_nan.py data/processed/sasrec_user_embeddings.parquet
+```
+If it lists parameters, the weights are already NaN-corrupted and you'll need to retrain from scratch, `scripts/train_sasrec.py` needs no changes for this, it already calls into the fixed `SASRec.forward`.
 
 ## Cold start
 
@@ -142,6 +164,7 @@ recsys-movielens/
 │   ├── curate_personas.py               # picks real users for the UI's curated personas
 │   ├── run_cold_start.py                # Gemini batch embedding job
 │   ├── check_embeddings_for_nan.py      # diagnostic for embedding parquet files
+│   ├── reexport_sasrec_embeddings.py    # re-export from an existing checkpoint without retraining
 │   └── generate_demo_artifacts.py       # synthetic data, for UI development only
 ├── tests/
 ├── results/                      # comparison table, committed

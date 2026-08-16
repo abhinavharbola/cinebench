@@ -129,7 +129,11 @@ def load_checkpoint(path: Path, device: str = "cpu"):
     start training -- otherwise user/item index assignments could drift."""
     if not path.exists():
         return None
-    ckpt = torch.load(path, map_location=device)
+    # explicit weights_only=False: checkpoints store id_maps/config dicts
+    # alongside tensors, not just tensors, so the safer weights_only=True
+    # default (which PyTorch is moving toward) can't load this file --
+    # being explicit here avoids a silent break on a future torch upgrade
+    ckpt = torch.load(path, map_location=device, weights_only=False)
     id_maps = IdMaps(
         user_id_to_idx=ckpt["user_id_to_idx"],
         item_id_to_idx=ckpt["item_id_to_idx"],

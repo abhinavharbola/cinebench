@@ -25,6 +25,47 @@ from src.eval.tracking import log_model_run
 PAD_TOKEN = 0
 
 
+def build_attention_mask(input_seq: torch.Tensor, num_heads: int) -> torch.Tensor:
+    """Combined causal + padding mask, as one explicit additive float
+    tensor of shape (B*num_heads, L, L) -- built so every row, including
+    padding query positions, always keeps its own diagonal entry unmasked.
+
+    This fixes a real NaN bug (confirmed empirically, not theoretical):
+    the previous version passed `mask=causal_bool` and
+    `src_key_padding_mask=padding_bool` separately and let PyTorch combine
+    them. For a padding query position, that combination excludes every
+    key including the position's own diagonal entry, so its attention row
+    is entirely -inf and softmax produces NaN there -- expected and
+    harmless on its own, since nothing reads a padding position's output.
+    But with 2+ encoder layers (this model uses 2), that NaN becomes a
+    *key's value* for real, non-padded query positions in the next layer.
+    Even though the attention *weight* assigned to that key is correctly
+    ~0 (properly masked), `0 * NaN = NaN` in IEEE floating point, so the
+    weighted sum -- and with it every real position's hidden state --
+    still comes out NaN. This reproduces for literally any sequence
+    shorter than max_seq_len (i.e. nearly every user), confirmed by
+    feeding sequences of every length 1..50 through the model and checking
+    the last (real) position's hidden state.
+
+    The fix: always allow a query position to attend to itself, regardless
+    of padding. This is a no-op for real positions (self-attendance was
+    never excluded for them in the first place -- confirmed bit-identical
+    output vs. the old masking approach whenever no NaN was present to
+    compare against), and it prevents a padding position's row from ever
+    being fully masked, so it never produces NaN, so there is nothing left
+    for later layers to pick up.
+    """
+    B, L = input_seq.shape
+    device = input_seq.device
+    causal = torch.triu(torch.ones(L, L, dtype=torch.bool, device=device), diagonal=1)
+    pad_key = input_seq == PAD_TOKEN
+    eye = torch.eye(L, dtype=torch.bool, device=device)
+    block = causal.unsqueeze(0) | (pad_key.unsqueeze(1) & ~eye.unsqueeze(0))
+    additive = torch.zeros(B, L, L, device=device, dtype=torch.float32)
+    additive.masked_fill_(block, float("-inf"))
+    return additive.unsqueeze(1).expand(B, num_heads, L, L).reshape(B * num_heads, L, L)
+
+
 @dataclass
 class IdMaps:
     item_id_to_idx: dict  # real movieId -> shifted idx (1..num_items), 0 reserved for padding
@@ -82,6 +123,7 @@ class SASRec(nn.Module):
     def __init__(self, num_items: int, max_seq_len: int = 50, embedding_dim: int = 64, num_heads: int = 2, num_layers: int = 2, dropout: float = 0.2):
         super().__init__()
         self.max_seq_len = max_seq_len
+        self.num_heads = num_heads
         self.item_embedding = nn.Embedding(num_items + 1, embedding_dim, padding_idx=PAD_TOKEN)
         self.position_embedding = nn.Embedding(max_seq_len, embedding_dim)
         self.dropout = nn.Dropout(dropout)
@@ -102,18 +144,13 @@ class SASRec(nn.Module):
         x = self.item_embedding(input_seq) + self.position_embedding(positions)
         x = self.dropout(x)
 
-        # Both masks must share a dtype -- PyTorch flags (and, in some
-        # versions, mishandles) a float causal mask combined with a bool
-        # padding mask, which can produce NaN for left-padded sequences
-        # where a padding position's every allowed key is itself padding
-        # (all-masked attention row -> softmax(-inf,...) -> NaN). Building
-        # the causal mask as bool directly avoids the mixed-type path.
-        causal_mask = torch.triu(
-            torch.ones(L, L, dtype=torch.bool, device=input_seq.device), diagonal=1
-        )
-        padding_mask = input_seq == PAD_TOKEN  # (B, L), True = ignore
-
-        hidden = self.encoder(x, mask=causal_mask, src_key_padding_mask=padding_mask)
+        # See build_attention_mask's docstring: this must be one explicit
+        # additive mask, not a separate causal `mask` + `src_key_padding_mask`
+        # pair -- that combination produces NaN at every non-fully-padded
+        # sequence length once you have 2+ encoder layers (confirmed
+        # empirically, this isn't a hypothetical edge case).
+        mask = build_attention_mask(input_seq, self.num_heads)
+        hidden = self.encoder(x, mask=mask)
         return self.layer_norm(hidden)
 
     def logits(self, hidden: torch.Tensor) -> torch.Tensor:
@@ -138,7 +175,11 @@ def save_checkpoint(path: Path, model: SASRec, optimizer, epoch: int, id_maps: I
 def load_checkpoint(path: Path, device: str = "cpu"):
     if not path.exists():
         return None
-    ckpt = torch.load(path, map_location=device)
+    # explicit weights_only=False: checkpoints store id_maps/config dicts
+    # alongside tensors, not just tensors, so the safer weights_only=True
+    # default (which PyTorch is moving toward) can't load this file --
+    # being explicit here avoids a silent break on a future torch upgrade
+    ckpt = torch.load(path, map_location=device, weights_only=False)
     id_maps = IdMaps(
         item_id_to_idx=ckpt["item_id_to_idx"],
         idx_to_item_id={i: m for m, i in ckpt["item_id_to_idx"].items()},
