@@ -3,6 +3,7 @@
 
 import streamlit as st
 
+from ui.components import render_empty_state, render_page_header
 from ui.data_access import get_recommendations, load_model_registry
 from ui.styles import MODEL_COLORS, MODEL_LABELS
 
@@ -12,20 +13,32 @@ def _render_movie_card(item: dict, accent: str, rank: int) -> str:
     score_line = f"score {item['score']:.3f}" if item["score"] is not None else f"rank #{rank}"
     return f"""
     <div class="mc-card" style="border-left: 3px solid {accent};">
-        <div style="font-weight:600;">{item['title']}</div>
-        <div style="margin-top:0.3rem;">{genre_tags}</div>
-        <div class="mc-score" style="margin-top:0.4rem;">{score_line}</div>
+        <div style="display:flex; align-items:flex-start;">
+            <span class="mc-rank-badge">{rank}</span>
+            <div style="flex:1;">
+                <div style="font-weight:600;">{item['title']}</div>
+                <div style="margin-top:0.3rem;">{genre_tags}</div>
+                <div class="mc-score" style="margin-top:0.4rem;">{score_line}</div>
+            </div>
+        </div>
     </div>
     """
 
 
 def render():
-    st.markdown('<div class="mc-eyebrow">Screen 02</div>', unsafe_allow_html=True)
-    st.markdown("## Recommendations")
+    render_page_header(
+        "Screen 02",
+        "Recommendations",
+        "The same viewer, run through every trained approach, so you can compare what each one surfaces.",
+    )
 
     user_id = st.session_state.get("selected_user_id")
     if user_id is None:
-        st.warning("No viewer selected yet. Go to the Select Viewer screen first.")
+        render_empty_state(
+            "No viewer selected yet.",
+            icon="\U0001F464",
+            action_hint="Go to the Select Viewer screen first.",
+        )
         return
 
     label = st.session_state.get("selected_label", f"User {user_id}")
@@ -36,7 +49,10 @@ def render():
     available_models = [m for m in MODEL_LABELS if m in registry]
 
     if not available_models:
-        st.warning("No trained models found in data/processed/models/. Run the Phase 1-3 training scripts first.")
+        render_empty_state(
+            "No trained models found in data/processed/models/.",
+            action_hint="Run the Phase 1-3 training scripts first.",
+        )
         return
 
     col_a, col_b = st.columns([3, 1])

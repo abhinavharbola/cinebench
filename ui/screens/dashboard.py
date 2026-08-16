@@ -8,6 +8,7 @@ import polars as pl
 import streamlit as st
 from plotly.subplots import make_subplots
 
+from ui.components import render_empty_state, render_kpi_row, render_model_chip, render_page_header
 from ui.data_access import load_comparison_table
 from ui.styles import COLORS, MODEL_COLORS, MODEL_LABELS
 
@@ -68,27 +69,53 @@ def _render_color_legend(models: list[str]):
     """Compact, self-contained color key so this screen reads correctly
     even for someone who lands here first, without having seen the
     color-coding established on the recommendations screen."""
-    chips = "".join(
-        f'<span style="display:inline-flex; align-items:center; margin-right:1.1rem;">'
-        f'<span style="width:10px; height:10px; border-radius:2px; background:{MODEL_COLORS.get(m, COLORS["text_muted"])}; '
-        f'display:inline-block; margin-right:0.4rem;"></span>'
-        f'<span style="font-family:\'IBM Plex Mono\',monospace; font-size:0.75rem; color:{COLORS["text_muted"]};">{MODEL_LABELS.get(m, m)}</span>'
-        f'</span>'
-        for m in models
-    )
+    chips = "".join(render_model_chip(m, MODEL_LABELS.get(m, m)) for m in models)
     st.markdown(f'<div style="margin: 0.2rem 0 1.2rem 0;">{chips}</div>', unsafe_allow_html=True)
 
 
+def _leaderboard_kpis(table: pl.DataFrame) -> list[dict]:
+    """Headline numbers pulled from the table so the person doesn't have
+    to read a bar chart just to find out which model currently wins on
+    each metric."""
+    kpis = [{
+        "label": "Approaches compared",
+        "value": str(table.height),
+        "caption": ", ".join(MODEL_LABELS.get(m, m) for m in table["model"].to_list()),
+        "accent": COLORS["accent_ink"],
+    }]
+
+    for metric, title in [("ndcg@10", "Best NDCG@10"), ("recall@10", "Best Recall@10"), ("diversity", "Best Diversity")]:
+        if metric not in table.columns:
+            continue
+        best_row = table.sort(metric, descending=True).row(0, named=True)
+        best_model = best_row["model"]
+        kpis.append({
+            "label": title,
+            "value": f"{best_row[metric]:.3f}",
+            "caption": MODEL_LABELS.get(best_model, best_model),
+            "accent": MODEL_COLORS.get(best_model, COLORS["accent_marquee"]),
+        })
+    return kpis
+
+
 def render():
-    st.markdown('<div class="mc-eyebrow">Screen 03</div>', unsafe_allow_html=True)
-    st.markdown("## Model performance")
-    st.write("Every approach evaluated through the identical harness, on identical held-out data.")
-    st.markdown('<div class="mc-sprocket"></div>', unsafe_allow_html=True)
+    render_page_header(
+        "Screen 03",
+        "Model performance",
+        "Every approach evaluated through the identical harness, on identical held-out data.",
+    )
 
     table = load_comparison_table()
     if table is None:
-        st.warning("No results found. Run scripts/run_phase1.py (and later phases) to populate results/comparison_table.csv.")
+        render_empty_state(
+            "No results found.",
+            icon="\U0001F4CA",
+            action_hint="Run: python scripts/run_phase1.py &mdash; to populate results/comparison_table.csv.",
+        )
         return
+
+    render_kpi_row(_leaderboard_kpis(table))
+    st.markdown('<div class="mc-sprocket"></div>', unsafe_allow_html=True)
 
     metric_cols = [c for c in table.columns if c != "model"]
     default_metrics = [c for c in ("recall@10", "ndcg@10") if c in metric_cols] or metric_cols[:2]

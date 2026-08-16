@@ -46,10 +46,26 @@ def compute_user_stats(train: pl.DataFrame, reference_timestamp: int) -> dict[in
     return out
 
 
+NO_GENRES_SENTINEL = "(no genres listed)"
+
+
 def build_item_genre_map(movies: pl.DataFrame) -> dict[int, set]:
+    """movieId -> set of genre strings.
+
+    MovieLens marks items with no genre data using the literal string
+    "(no genres listed)", not an empty string. Without special-casing it,
+    every such item gets treated as belonging to a fake genre category
+    called "(no genres listed)", which quietly skews genre_match_score and
+    intra_list_diversity for those items. Both an empty string and the
+    sentinel map to an empty genre set.
+    """
     out = {}
     for row in movies.iter_rows(named=True):
-        out[row["movieId"]] = set(row["genres"].split("|")) if row["genres"] else set()
+        genres = row["genres"]
+        if not genres or genres == NO_GENRES_SENTINEL:
+            out[row["movieId"]] = set()
+        else:
+            out[row["movieId"]] = set(genres.split("|"))
     return out
 
 
@@ -98,15 +114,30 @@ def build_features_for_candidates(
     user_stats: dict[int, dict],
     user_genre_profiles: dict[int, Counter],
     item_genres: dict[int, set],
+    seen_items: set[int] | None = None,
 ) -> pl.DataFrame:
     """One row per candidate item for this user, columns = FEATURE_COLUMNS
     (plus userId/movieId for bookkeeping). log1p on popularity/recency to
-    tame long-tailed distributions."""
+    tame long-tailed distributions.
+
+    seen_items: movieIds this user has already interacted with (typically
+    their train history). FAISS returns nearest neighbors purely by
+    embedding distance with no notion of what a user has already watched,
+    so candidates already in seen_items are dropped here before feature
+    rows are built -- this is the single place every retrieval-based
+    caller (serving, UI, ranker training) funnels through, so "never
+    recommend something already seen" is enforced once, not per call site.
+    Popularity/CF/ALS already do their own seen-item filtering internally;
+    this brings the embedding-based path to the same standard.
+    """
     stats = user_stats.get(user_id, {"n_interactions": 0, "days_since_last_interaction": 0.0})
     profile = user_genre_profiles.get(user_id, Counter())
+    seen_items = seen_items or set()
 
     rows = []
     for movie_id, sim in candidates:
+        if movie_id in seen_items:
+            continue
         rows.append({
             "userId": user_id,
             "movieId": movie_id,

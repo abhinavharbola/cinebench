@@ -18,7 +18,7 @@ import streamlit as st
 from ui.screens import dashboard, persona_selector, recommendations
 from ui.styles import inject_custom_css
 
-st.set_page_config(page_title="MovieLens Recommender", layout="wide")
+st.set_page_config(page_title="ReelBench \u2014 MovieLens Recommender", page_icon="\U0001F3AC", layout="wide")
 st.markdown(inject_custom_css(), unsafe_allow_html=True)
 
 if "selected_user_id" not in st.session_state:
@@ -27,10 +27,10 @@ if "selected_user_id" not in st.session_state:
 with st.sidebar:
     st.markdown('<div class="mc-wordmark">Reel<span>Bench</span></div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="mc-eyebrow" style="padding-bottom:1rem;">Two-stage recommender benchmark</div>',
+        '<div class="mc-sidebar-tagline">A two-stage recommender benchmark on MovieLens 25M &mdash; '
+        '5 approaches, one shared evaluation harness.</div>',
         unsafe_allow_html=True,
     )
-    st.markdown('<div class="mc-sprocket"></div>', unsafe_allow_html=True)
 
     screen = st.radio(
         "Navigate",
@@ -41,6 +41,21 @@ with st.sidebar:
     st.markdown('<div class="mc-sprocket"></div>', unsafe_allow_html=True)
     if st.session_state["selected_user_id"] is not None:
         st.caption(f"Current viewer: {st.session_state.get('selected_label')}")
+        st.markdown('<div class="mc-sprocket"></div>', unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="mc-sidebar-footer">
+            <span class="mc-stack-chip">Polars</span>
+            <span class="mc-stack-chip">FAISS</span>
+            <span class="mc-stack-chip">LightGBM</span>
+            <span class="mc-stack-chip">PyTorch</span>
+            <span class="mc-stack-chip">Streamlit</span>
+            <div style="margin-top:0.6rem;">Served entirely from cached local artifacts.<br>No live model calls at request time.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 if screen == "Select Viewer":
     persona_selector.render()

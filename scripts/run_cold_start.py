@@ -4,10 +4,15 @@ API, caches to parquet. Run once, offline. Never imported by src/serving/ --
 serving reads only the cached parquet output of this script.
 
 Before running: check current free-tier quota at
-https://ai.google.dev/gemini-api/docs/rate-limits -- RPM/TPM/RPD figures for
-gemini-embedding-001 have changed more than once through 2025-2026, so don't
-trust a hardcoded number here. Set --requests-per-minute to match what you
-see on that page (this script defaults conservatively to 10).
+https://ai.google.dev/gemini-api/docs/rate-limits for whichever
+--model-name you run this with (defaults to text-embedding-004) -- RPM/TPM/
+RPD figures for Gemini's embedding models have changed more than once
+through 2025-2026, so don't trust a hardcoded number here. Set
+--requests-per-minute to match what you see on that page (this script
+defaults conservatively to 10). Also worth a quick check: `google-
+generativeai` (imported below) is Google's older Gemini SDK -- confirm it's
+still the recommended package before a large run, in case it's since been
+superseded by `google-genai`.
 
 Resumable: writes incrementally and skips movieIds already present in the
 output file, so a rate-limit or network interruption partway through a

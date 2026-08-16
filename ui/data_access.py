@@ -17,6 +17,7 @@ import numpy as np
 import polars as pl
 import streamlit as st
 
+from src.data.split import build_user_seen_items
 from src.ranking.features import (
     build_features_for_candidates,
     build_item_genre_map,
@@ -81,13 +82,13 @@ class EmbeddingRankerRecommender:
         user_emb = pl.read_parquet(user_embeddings_path)
         self.user_emb_lookup = dict(zip(user_emb["userId"].to_list(), user_emb["embedding"].to_list()))
 
-    def recommend(self, user_id: int, k: int, feature_context: dict) -> list[tuple[int, float]]:
+    def recommend(self, user_id: int, k: int, feature_context: dict, seen_items: set | None = None) -> list[tuple[int, float]]:
         if user_id not in self.user_emb_lookup:
             return []
         user_vec = np.array(self.user_emb_lookup[user_id], dtype=np.float32)
         candidates = self.retriever.query(user_vec, top_n=max(k * 5, 50))
 
-        features = build_features_for_candidates(user_id, candidates, **feature_context)
+        features = build_features_for_candidates(user_id, candidates, **feature_context, seen_items=seen_items)
         ranked_ids = rank_candidates(self.ranker, features, top_k=k)
 
         sim_lookup = dict(candidates)
@@ -124,6 +125,10 @@ def load_model_registry() -> dict:
             "item_genres": item_genres,
         }
         registry["_feature_context"] = feature_context
+        # every user's full train history -- so the two embedding-based
+        # models never recommend something the user has already watched,
+        # matching popularity/item-item-CF/ALS which already exclude it
+        registry["_seen_by_user"] = build_user_seen_items(train)
 
         for name, prefix in [("two_tower", "two_tower"), ("sasrec", "sasrec")]:
             item_emb_path = DATA_DIR / f"{prefix}_item_embeddings.parquet"
@@ -145,7 +150,8 @@ def get_recommendations(model_name: str, user_id: int, k: int = 10) -> list[dict
 
     model = registry[model_name]
     if model_name in ("two_tower", "sasrec"):
-        pairs = model.recommend(user_id, k, registry["_feature_context"])
+        seen = registry.get("_seen_by_user", {}).get(user_id, set())
+        pairs = model.recommend(user_id, k, registry["_feature_context"], seen_items=seen)
     else:
         item_ids = model.recommend(user_id, k)
         # popularity and item-item CF are rank-based, not similarity-scored --

@@ -33,7 +33,7 @@ Given the MovieLens 25M dataset, the pipeline:
 1. Converts explicit ratings to implicit feedback (rating ≥ 4) and splits train/test on a single **global timestamp cutoff**, never a per-user-only split, a per-user-only leave-last-N-out split can still leak future signal across users even when each individual user's split looks correct in isolation.
 2. Builds the evaluation harness (Recall@K, NDCG@K, MAP@K, coverage, intra-list diversity) **before** any model exists, and every model is scored through that same harness, same protocol, no exceptions.
 3. Trains 5 approaches, popularity, item-item CF, ALS/BPR, a two-tower neural retriever, and SASRec, the first three on CPU locally, the neural two on free-tier Colab/Kaggle GPU with checkpoint resume across quota interruptions.
-4. Retrieves candidates via FAISS (CPU, local index) over the neural embeddings, then re-ranks with LightGBM using embedding similarity, recency, popularity, user activity, and genre match as features.
+4. Retrieves candidates via FAISS (CPU, local index) over the neural embeddings, excludes whatever the user has already interacted with, then re-ranks the survivors with LightGBM using embedding similarity, recency, popularity, user activity, and genre match as features. Every approach in this project excludes already-seen items this way, popularity/item-item CF/ALS internally, the FAISS+LightGBM path via `seen_items` on `build_features_for_candidates`, so no model can recommend something the user has already watched.
 5. Serves the production path (two-tower + ranker) via FastAPI, and separately compares all 5 approaches side-by-side in a Streamlit UI, both reading only cached local artifacts, no live model calls at request time.
 
 ## Architecture
@@ -58,8 +58,11 @@ flowchart TD
     tt --> embeddings[(embedding parquet)]
     sasrec --> embeddings
     embeddings --> faiss[FAISS index\nCPU, local disk]
-    coldstart[Gemini cold-start batch\ncached parquet, offline only] --> faiss
-    faiss --> ranker[LightGBM ranker\nsimilarity + recency + popularity\n+ user stats + genre match]
+    faiss --> seen[exclude user's\nseen items]
+    seen --> ranker[LightGBM ranker\nsimilarity + recency + popularity\n+ user stats + genre match]
+
+    coldstart[Gemini cold-start batch\ncached parquet, offline only] --> csfaiss[FAISS content index\nseparate from the two-tower index,\nincompatible embedding spaces]
+    csfaiss -->|/similar endpoint| api
 
     ranker --> api[FastAPI\nCPU, cached artifacts only]
     ranker --> ui[Streamlit UI\nall 5 approaches, cached artifacts only]
@@ -83,6 +86,7 @@ Built and unit-tested (`tests/test_metrics.py`, `tests/test_split.py`) **before*
 - **Metrics**: Recall@10/20, NDCG@10/20, MAP@10/20, catalog coverage, intra-list diversity.
 - **Protocol**: leave-last-N-out per user, but bounded by a single global timestamp cutoff, `assert_no_leakage()` checks both that no train row is at or after the cutoff and that no test user is absent from train, and is run as a hard stop before any model touches the split.
 - **Output**: one committed table, `results/comparison_table.csv`, read directly by the Streamlit dashboard, never recomputed in the UI.
+- **Ranker supervision stays inside train.** The LightGBM ranker needs its own positive/negative labels to train on, separate from candidate retrieval. Those labels come from `carve_ranker_supervision_split()` (`src/data/split.py`), a *second*, purely-internal temporal split applied to `train` alone: an earlier slice becomes the "seen" set for candidate generation, a later in-train slice becomes the labels. `test.parquet`, the harness's actual held-out set, is never read by ranker training, only by harness evaluation, so scoring the ranker later can't be inflated by having trained on its own answer key.
 
 ## Robustness
 
@@ -96,6 +100,8 @@ A few specific failure modes this pipeline was built and tested to survive, not 
 ## Cold start
 
 A one-time batch job embeds movie titles + genres with Gemini's free-tier embedding API, cached to parquet. **Never called live at serving time**, this is a cached artifact, produced once, offline.
+
+These content embeddings live in a completely different vector space than the two-tower/SASRec learned embeddings, nothing ties the two spaces together, so they can't be merged into the main retrieval FAISS index. Instead `build_serving_artifacts.py` builds a second, standalone FAISS index purely over the cold-start embeddings, and `src/serving/app.py` exposes it as `GET /similar/{movie_id}`, a content-based "more like this" lookup that works even for items with too little interaction history for a meaningful two-tower embedding.
 
 Gemini's free-tier rate limits have changed more than once; the script defaults to a conservative request rate and retries with exponential backoff rather than trusting a hardcoded number. Check current limits before running: https://ai.google.dev/gemini-api/docs/rate-limits
 
@@ -132,6 +138,7 @@ recsys-movielens/
 │   ├── train_sasrec.py                  # Colab/Kaggle entrypoint
 │   ├── build_serving_artifacts.py       # FAISS + ranker for FastAPI's production path
 │   ├── build_ui_artifacts.py            # per-model FAISS + ranker for the UI's 5-way comparison
+│   ├── evaluate_pipeline_models.py      # scores two-tower/SASRec through the harness, appends to comparison_table.csv
 │   ├── curate_personas.py               # picks real users for the UI's curated personas
 │   ├── run_cold_start.py                # Gemini batch embedding job
 │   ├── check_embeddings_for_nan.py      # diagnostic for embedding parquet files
@@ -146,7 +153,7 @@ recsys-movielens/
 
 1. **Download MovieLens 25M**: https://files.grouplens.org/datasets/movielens/ml-25m.zip, unzip into `data/raw/ml-25m/`.
 
-2. **Install**
+2. **Install** (requires Python 3.10+)
    ```bash
    python -m venv venv && source venv/bin/activate      # Windows: venv\Scripts\Activate.ps1
    pip install -r requirements.txt
@@ -175,7 +182,8 @@ python scripts/train_sasrec.py --checkpoint-path <persistent-path> --output-dir 
 # Phase 4, retrieval + ranking artifacts, serving, UI
 python scripts/build_serving_artifacts.py    # FastAPI's single production path
 python scripts/build_ui_artifacts.py         # per-model artifacts for the UI's 5-way comparison
-uvicorn src.serving.app:app --reload         # POST /recommend {"user_id": 1, "top_n": 10}
+python scripts/evaluate_pipeline_models.py   # scores two-tower/SASRec through the harness, appends to results/comparison_table.csv
+uvicorn src.serving.app:app --reload         # POST /recommend {"user_id": 1, "top_n": 10}, GET /similar/{movie_id}
 streamlit run ui/app.py
 
 # Optional
@@ -189,7 +197,7 @@ pytest tests/ -v
 
 ## Known limitations
 
-- **The comparison table currently scores the 3 CPU baselines only.** `run_phase1.py` evaluates popularity, item-item CF, and ALS/BPR through the harness and writes the table; the two-tower and SASRec rows require running the same harness over the retrieval+ranking pipeline's output, which isn't yet wired into a single script. `build_ui_artifacts.py` and `build_serving_artifacts.py` build the retrieval/ranking artifacts those models need to *serve* recommendations, but neither appends a harness-scored row to `comparison_table.csv`. Extending the harness to cover the full retrieval+ranking pipeline is the natural next step, not a hidden gap, the dashboard will show exactly 3 bars until it exists.
+- **The committed comparison table currently scores the 3 CPU baselines only.** `run_phase1.py` evaluates popularity, item-item CF, and ALS/BPR through the harness and writes those 3 rows. The harness now *can* score the two-tower and SASRec retrieval+ranking pipeline too, `scripts/evaluate_pipeline_models.py` wraps each as a `recommend(user_id, k)` model (FAISS retrieval, seen-item exclusion, LightGBM re-rank) and appends harness-scored rows to `results/comparison_table.csv` the same way `run_phase1.py` does for the baselines. It just hasn't been run against a real trained two-tower/SASRec checkpoint in this repo state, since that requires Colab/Kaggle GPU time this environment doesn't have. Run `build_ui_artifacts.py` then `evaluate_pipeline_models.py` after training both neural models to populate all 5 rows.
 - **Gemini's free-tier cold-start quota has changed more than once** through 2025–2026; `run_cold_start.py` defaults conservatively and retries with backoff, but check current limits before a large run rather than trusting the number in this README.
-- **`generate_demo_artifacts.py` produces synthetic data for UI development only**, plausible-looking titles, ALS-derived embeddings standing in for the neural models. Useful for iterating on the UI without waiting on a full pipeline run; not a substitute for the real evaluation.
+- **`generate_demo_artifacts.py` produces synthetic data for UI development only**, plausible-looking titles, ALS-derived embeddings standing in for the neural models. Useful for iterating on the UI without waiting on a full pipeline run; not a substitute for the real evaluation. It mirrors the real pipeline's leakage-safe ranker supervision and seen-item filtering, so demo-mode results stay representative of what the real pipeline does, not just visually similar.
 - **MovieLens 25M is a static, historical snapshot**, ratings stop at the dataset's collection date. The comparison table reflects relative model quality on that snapshot, not current catalog or taste trends.

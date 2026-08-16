@@ -30,7 +30,10 @@ def curate_personas(
     profiles = build_user_genre_profiles(train, item_genres)
 
     activity = train.group_by("userId").agg(pl.len().alias("n")).filter(pl.col("n") >= min_interactions)
-    active_users = set(activity["userId"].to_list())
+    # sorted, not a bare set: iterating a set gives an argmax that's only
+    # "stable" by accident of hashing, so a tie between two users could pick
+    # a different persona representative across supposedly-identical runs.
+    active_users = sorted(activity["userId"].to_list())
 
     personas = []
     for name, target_genre in persona_definitions:

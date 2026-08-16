@@ -15,6 +15,11 @@ Usage:
 Requires data/processed/interactions.parquet and movies.parquet to already
 exist (run src/data/ingest.py first, after placing the raw MovieLens 25M
 files in data/raw/ml-25m/).
+
+Note: this script always overwrites results/comparison_table.csv with
+exactly these 3 rows. If you've since run evaluate_pipeline_models.py to
+add the two-tower/SASRec rows, re-running this script will wipe them back
+out, re-run evaluate_pipeline_models.py afterward to restore them.
 """
 
 import pickle
@@ -30,19 +35,13 @@ from src.eval.metrics import evaluate_all
 from src.eval.tracking import log_model_run
 from src.models.baseline import ItemItemCF, PopularityModel
 from src.models.mf import MatrixFactorizationModel
+from src.ranking.features import build_item_genre_map
 
 PROCESSED_DIR = Path("data/processed")
 MODELS_DIR = PROCESSED_DIR / "models"
 RESULTS_DIR = Path("results")
 K_VALUES = (10, 20)
 TOP_K_FOR_RECS = max(K_VALUES)
-
-
-def build_item_genres(movies: pl.DataFrame) -> dict:
-    out = {}
-    for row in movies.iter_rows(named=True):
-        out[row["movieId"]] = set(row["genres"].split("|")) if row["genres"] else set()
-    return out
 
 
 def evaluate_model(name: str, model, test: pl.DataFrame, catalog_size: int, item_genres: dict) -> dict:
@@ -64,7 +63,7 @@ def evaluate_model(name: str, model, test: pl.DataFrame, catalog_size: int, item
 def main():
     interactions = pl.read_parquet(PROCESSED_DIR / "interactions.parquet")
     movies = pl.read_parquet(PROCESSED_DIR / "movies.parquet")
-    item_genres = build_item_genres(movies)
+    item_genres = build_item_genre_map(movies)
     catalog_size = interactions["movieId"].n_unique()
 
     split = temporal_split(interactions)

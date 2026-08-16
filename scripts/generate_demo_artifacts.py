@@ -26,7 +26,7 @@ import numpy as np
 import polars as pl
 
 from src.data.personas import curate_personas
-from src.data.split import temporal_split
+from src.data.split import build_user_seen_items, carve_ranker_supervision_split, temporal_split
 from src.models.baseline import ItemItemCF, PopularityModel
 from src.models.mf import MatrixFactorizationModel
 from src.ranking.features import (
@@ -164,6 +164,15 @@ def main():
         "item_genres": item_genres,
     }
 
+    # ranker supervision: carved out of train only, mirrors
+    # build_serving_artifacts.py / build_ui_artifacts.py, so this demo
+    # script exercises the same leakage-safe path the real pipeline uses
+    # instead of a demo-only shortcut that would drift from it.
+    ranker_split = carve_ranker_supervision_split(split.train, val_quantile=0.8)
+    ranker_seen_by_user = build_user_seen_items(ranker_split.train)
+    ranker_positives = build_user_seen_items(ranker_split.test)
+    full_seen_by_user = build_user_seen_items(split.train)
+
     for prefix in ["two_tower", "sasrec"]:
         item_df, user_df = build_mock_neural_embeddings(als, item_ids, user_ids, dim=32)
         item_df.write_parquet(DATA_DIR / f"{prefix}_item_embeddings.parquet")
@@ -173,16 +182,16 @@ def main():
         retriever.build(item_df)
         retriever.save(DATA_DIR / "faiss_index" / f"{prefix}_items.index")
 
-        per_user_features, positives = {}, {}
+        per_user_features = {}
         for uid in user_df["userId"].to_list():
             uvec = np.array(user_df.filter(pl.col("userId") == uid)["embedding"][0])
             candidates = retriever.query(uvec, top_n=30)
-            feats = build_features_for_candidates(uid, candidates, **feature_context)
-            per_user_features[uid] = feats
-            cand_ids = [c[0] for c in candidates]
-            positives[uid] = set(random.sample(cand_ids, min(3, len(cand_ids))))
+            per_user_features[uid] = build_features_for_candidates(
+                uid, candidates, **feature_context,
+                seen_items=ranker_seen_by_user.get(uid, set()),
+            )
 
-        training_table = build_training_table(per_user_features, positives)
+        training_table = build_training_table(per_user_features, ranker_positives)
         ranker = train_ranker(training_table, num_boost_round=50)
         save_model(ranker, DATA_DIR / "ranker" / f"{prefix}_ranker.txt")
 
@@ -197,7 +206,10 @@ def main():
                     return []
                 uvec = np.array(uid_series[0])
                 candidates = self.retriever.query(uvec, top_n=max(k * 3, 30))
-                feats = build_features_for_candidates(user_id, candidates, **feature_context)
+                feats = build_features_for_candidates(
+                    user_id, candidates, **feature_context,
+                    seen_items=full_seen_by_user.get(user_id, set()),
+                )
                 return rank_candidates(self.ranker, feats, top_k=k)
 
         evaluate(prefix, MockRecommender(retriever, ranker))

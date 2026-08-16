@@ -1,3 +1,5 @@
+# Requires Python 3.10+ (the codebase uses PEP 604 `X | None` unions throughout)
+
 # --- Core data handling ---
 polars==1.9.0
 pandas==2.2.3

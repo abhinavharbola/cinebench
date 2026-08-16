@@ -78,6 +78,54 @@ def temporal_split(
     return SplitResult(train=train, test=test, cutoff_timestamp=cutoff_timestamp)
 
 
+def build_user_seen_items(interactions: pl.DataFrame) -> dict[int, set]:
+    """userId -> set of movieIds in `interactions`. Shared helper so every
+    caller that needs to exclude already-seen items from a candidate list
+    (ranker training, serving, the UI) builds that set the same way."""
+    by_user = interactions.group_by("userId").agg(pl.col("movieId")).to_dict(as_series=False)
+    return {uid: set(items) for uid, items in zip(by_user["userId"], by_user["movieId"])}
+
+
+def carve_ranker_supervision_split(
+    train: pl.DataFrame,
+    val_quantile: float = 0.9,
+    min_seen_interactions: int = 1,
+) -> SplitResult:
+    """
+    Carves a *second*, purely-internal split out of the outer train set, used
+    only to supervise the LightGBM ranker.
+
+    Bug this fixes: build_serving_artifacts.py / build_ui_artifacts.py used
+    to label ranker training candidates with `test.parquet` -- the exact
+    same held-out set the harness later scores every model against. That
+    means the ranker's own training data would already contain the labels
+    the harness is meant to blind-check it on, and once the harness is
+    extended to score the full retrieval+ranking pipeline (see
+    scripts/evaluate_pipeline_models.py), the reported numbers would be
+    inflated by that leak rather than reflecting real generalization.
+
+    Fix: reuse temporal_split on `train` itself (never on test) to get a
+    second, earlier cutoff strictly before the outer cutoff:
+      - `.train`: each user's earlier in-train interactions -- the "seen"
+        set to exclude from FAISS candidates when building the ranker's
+        training table, so the ranker isn't trained to just re-rank items
+        it's already been told the user watched.
+      - `.test`: each user's later in-train interactions -- used as the
+        positive labels the ranker learns to rank highly.
+
+    The real held-out test.parquet is never read by anything that touches
+    ranker training; it stays reserved for harness evaluation only.
+    """
+    return temporal_split(
+        train,
+        test_quantile=val_quantile,
+        max_test_per_user=10_000,  # no per-user cap here -- unlike the
+        # outer harness split, this isn't scored for cross-user metric
+        # comparability, so keep every available label
+        min_train_interactions=min_seen_interactions,
+    )
+
+
 def assert_no_leakage(split: SplitResult) -> None:
     """
     Hard invariant check, also exercised in tests/test_split.py:
