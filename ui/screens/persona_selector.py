@@ -49,15 +49,17 @@ def render():
 
     user_ids = load_all_user_ids()
     if user_ids:
-        col_a, col_b = st.columns([2, 1])
-        with col_a:
-            selected = st.selectbox(
-                "MovieLens user ID", options=user_ids, key="user_id_select",
-                help=f"{len(user_ids):,} users available in the cached training split.",
-            )
-        with col_b:
-            st.write("")
-            st.write("")
+        selected = st.selectbox(
+            "MovieLens user ID", options=user_ids, key="user_id_select",
+            help=f"{len(user_ids):,} users available in the cached training split.",
+        )
+        # stacked, not a side-by-side column with the selectbox -- a
+        # selectbox has a label above it, a button doesn't, so lining the
+        # two up horizontally meant guessing a spacer height to compensate
+        # for that label. Stacking sidesteps the alignment problem
+        # entirely rather than trying to match it more precisely.
+        button_col, _ = st.columns([1, 2])
+        with button_col:
             if st.button("View recommendations for this user", use_container_width=True):
                 st.session_state["selected_user_id"] = selected
                 st.session_state["selected_label"] = f"User {selected}"

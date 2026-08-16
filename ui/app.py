@@ -27,7 +27,7 @@ if "selected_user_id" not in st.session_state:
 with st.sidebar:
     st.markdown('<div class="mc-wordmark">Reel<span>Bench</span></div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="mc-sidebar-tagline">A two-stage recommender benchmark on MovieLens 25M &mdash; '
+        '<div class="mc-sidebar-tagline">A two-stage recommender benchmark on MovieLens 25M: '
         '5 approaches, one shared evaluation harness.</div>',
         unsafe_allow_html=True,
     )

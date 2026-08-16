@@ -16,10 +16,10 @@
 
 [theme]
 base = "light"
-primaryColor = "#B14A24"          # COLORS["accent_marquee"]
-backgroundColor = "#F0EEE4"       # COLORS["bg_primary"]
-secondaryBackgroundColor = "#E7E3D4"  # COLORS["bg_surface_raised"]
-textColor = "#201E18"             # COLORS["text_primary"]
+primaryColor = "#B3242E"          # COLORS["accent_marquee"]
+backgroundColor = "#F2F1ED"       # COLORS["bg_primary"]
+secondaryBackgroundColor = "#E6E3DA"  # COLORS["bg_surface_raised"]
+textColor = "#1A1814"             # COLORS["text_primary"]
 font = "sans serif"
 
 [client]

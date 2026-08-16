@@ -1,13 +1,14 @@
 """
 Design tokens and custom CSS for the Streamlit UI.
 
-Palette: "archive ledger" -- burnt clay/terracotta + deep ink-teal + moss +
-plum, on a cool pale-grey paper background. Deliberately not the
-cream-and-gold/burgundy combination that shows up on most AI-generated
-"warm editorial" sites; the cooler grey paper and teal/clay/moss/plum
-accent family reads more like a film-archive catalog card than a generic
-blog theme, while staying a genuine light theme (true-white surfaces for
-elevation, dark text, no inverted panels).
+Palette: "marquee" -- a single confident cinema red (theater curtains,
+"now showing" signage) against near-black ink and true neutral paper,
+rather than a warm cream-and-gold combination or a cool indigo
+SaaS-dashboard combination -- both read as generic templates for
+different reasons; a single bold identity color reads as a deliberate
+choice instead. Paper background is genuinely neutral grey, not warm-
+leaning or cool-leaning, so the red carries the color story on its own
+rather than competing with a tinted background.
 
 A sprocket-rail divider (a row of film-perforation dots) is the signature
 structural element, and every model has a fixed color identity used
@@ -27,41 +28,41 @@ here. The config.toml is not optional decoration, it's the fix for that.
 """
 
 COLORS = {
-    "bg_primary": "#F0EEE4",
+    "bg_primary": "#F2F1ED",
     "bg_surface": "#FFFFFF",
-    "bg_surface_raised": "#E7E3D4",
-    "accent_marquee": "#B14A24",
-    "accent_marquee_soft": "#D97C4A",
-    "accent_velvet": "#1E4A47",
-    "accent_ink": "#16211F",
-    "text_primary": "#201E18",
-    "text_muted": "#5F5A4C",
-    "text_faint": "#8C8676",
-    "border_subtle": "#DBD5C3",
-    "border_strong": "#C7BFA8",
-    "positive": "#3C7A52",
-    "warning": "#B07A1E",
+    "bg_surface_raised": "#E6E3DA",
+    "accent_marquee": "#B3242E",
+    "accent_marquee_soft": "#D65C63",
+    "accent_velvet": "#2B1B24",
+    "accent_ink": "#17140F",
+    "text_primary": "#1A1814",
+    "text_muted": "#5C574C",
+    "text_faint": "#8B8578",
+    "border_subtle": "#DAD5C7",
+    "border_strong": "#C6BFAC",
+    "positive": "#2E7D4F",
+    "warning": "#B8791E",
 }
 
 RADIUS = {"sm": "6px", "md": "10px", "lg": "16px"}
 SHADOW = {
-    "card": "0 1px 2px rgba(22, 20, 15, 0.06)",
-    "card_hover": "0 4px 14px rgba(22, 20, 15, 0.10)",
-    "raised": "0 2px 8px rgba(22, 20, 15, 0.07)",
+    "card": "0 1px 2px rgba(23, 20, 15, 0.06)",
+    "card_hover": "0 4px 14px rgba(23, 20, 15, 0.10)",
+    "raised": "0 2px 8px rgba(23, 20, 15, 0.07)",
 }
 
 # Fixed per-model identity, used consistently across all three screens so a
-# user learns to recognize "clay = two-tower" the same way they'd recognize
-# a labeled film reel. Five hues drawn from the same family as the page
-# accents (clay, ink-teal, moss, plum) plus a neutral for the popularity
-# baseline, kept far enough apart in hue that they stay distinguishable on
-# both the bar chart and the small color-dot chips.
+# user learns to recognize "red = two-tower" the same way they'd recognize
+# a labeled film reel. Marquee red is reserved for the hero (two-tower)
+# model; the other four sit in a cooler, quieter supporting range so the
+# red keeps its role as the one color that means "the production model",
+# not just one of five arbitrary chart colors.
 MODEL_COLORS = {
-    "popularity": "#6B6558",
-    "item_item_cf": "#2F6E72",
-    "als": "#5C7A3F",
-    "two_tower": "#B14A24",
-    "sasrec": "#7A3B5E",
+    "popularity": "#6E685C",
+    "item_item_cf": "#3E6E86",
+    "als": "#3F7A4F",
+    "two_tower": "#B3242E",
+    "sasrec": "#6B3F82",
 }
 
 MODEL_LABELS = {
@@ -168,7 +169,6 @@ h1, h2, h3 {{
     font-family: 'Inter', sans-serif;
     font-size: 0.95rem;
     color: {COLORS['text_muted']};
-    max-width: 640px;
     line-height: 1.5;
 }}
 
@@ -188,6 +188,7 @@ h1, h2, h3 {{
     border-radius: {RADIUS['md']};
     padding: 1.1rem 1.3rem;
     margin-bottom: 0.9rem;
+    min-height: 148px;
     box-shadow: {SHADOW['card']};
     transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }}
@@ -195,6 +196,31 @@ h1, h2, h3 {{
 .mc-card:hover {{
     border-color: {COLORS['accent_marquee']}77;
     box-shadow: {SHADOW['card_hover']};
+}}
+
+.mc-card-placeholder {{
+    background-color: transparent;
+    border: 1px dashed {COLORS['border_subtle']};
+    box-shadow: none;
+}}
+
+/* Clamped to 2 lines with a matching min-height reserved either way, so a
+one-line title ("Alien") and a four-line one ("Star Wars: Episode V - The
+Empire Strikes Back") end up the same height instead of making their row
+in the comparison grid uneven. */
+.mc-card-title {{
+    font-weight: 600;
+    line-height: 1.3;
+    min-height: 2.6rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}}
+
+.mc-card-tags {{
+    margin-top: 0.3rem;
+    min-height: 1.6rem;
 }}
 
 .mc-rank-badge {{
@@ -217,6 +243,8 @@ h1, h2, h3 {{
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.85rem;
     color: {COLORS['accent_marquee']};
+    margin-top: auto;
+    padding-top: 0.4rem;
 }}
 
 .mc-genre-tag {{
@@ -297,15 +325,20 @@ identical regardless of description length. */
     padding-top: 0.6rem;
 }}
 
-/* KPI summary cards -- dashboard headline numbers */
+/* KPI summary cards -- dashboard headline numbers. Fixed min-height +
+flex column, same reasoning as .mc-card above: a 1-line caption
+("Popularity") and a 2-line one ("Popularity, Item-Item CF, ALS / BPR")
+would otherwise leave that card taller than its neighbors in the row. */
 .mc-kpi-card {{
     background-color: {COLORS['bg_surface']};
     border: 1px solid {COLORS['border_subtle']};
     border-top: 3px solid {COLORS['accent_marquee']};
     border-radius: {RADIUS['sm']};
     padding: 0.85rem 1rem 0.95rem 1rem;
+    min-height: 128px;
+    display: flex;
+    flex-direction: column;
     box-shadow: {SHADOW['card']};
-    height: 100%;
 }}
 
 .mc-kpi-label {{
@@ -329,6 +362,8 @@ identical regardless of description length. */
     font-size: 0.76rem;
     color: {COLORS['text_faint']};
     margin-top: 0.25rem;
+    line-height: 1.4;
+    min-height: 2.1rem;
 }}
 
 /* Empty / placeholder states, used wherever an artifact hasn't been built yet */
