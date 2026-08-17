@@ -1,6 +1,6 @@
-# ReelBench, Multi-Stage Movie Recommender Benchmark
+# ReelBench: Multi-Stage Movie Recommender Benchmark
 
-A production-style two-stage recommender system (candidate retrieval + ranking) on MovieLens 25M, benchmarking 5 approaches head-to-head under one evaluation harness. Trained on free-tier GPU (Colab/Kaggle), served entirely on CPU-only hardware.
+A production-style two-stage recommender system (candidate retrieval + ranking) on MovieLens 25M- benchmarking 5 approaches head-to-head under one evaluation harness. Trained on free-tier GPU (Colab/Kaggle), served entirely on CPU-only hardware.
 
 The evaluation comparison table is the centerpiece deliverable, not the model count or the UI.
 
@@ -91,7 +91,8 @@ A one-time batch job embeds movie titles + genres with Gemini's free-tier embedd
 
 These content embeddings live in a completely different vector space than the two-tower/SASRec learned embeddings, nothing ties the two spaces together, so they can't be merged into the main retrieval FAISS index. Instead `build_serving_artifacts.py` builds a second, standalone FAISS index purely over the cold-start embeddings, and `src/serving/app.py` exposes it as `GET /similar/{movie_id}`, a content-based "more like this" lookup that works even for items with too little interaction history for a meaningful two-tower embedding.
 
-Gemini's free-tier rate limits have changed more than once; the script defaults to a conservative request rate and retries with exponential backoff rather than trusting a hardcoded number. Check current limits before running: https://ai.google.dev/gemini-api/docs/rate-limits
+Gemini's free-tier rate limits have changed more than once; the script defaults to a conservative request rate and retries with exponential backoff rather than trusting a hardcoded number.
+Check current limits before running: https://ai.google.dev/gemini-api/docs/rate-limits
 
 ## Serving
 
@@ -170,7 +171,7 @@ recsys-movielens/
 
 ```bash
 # Phase 1, ingest, split, evaluation harness, 3 CPU baselines
-python -m src.data.ingest
+python src/data/ingest
 python scripts/run_phase1.py
 python scripts/curate_personas.py
 
