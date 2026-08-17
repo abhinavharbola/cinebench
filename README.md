@@ -7,10 +7,12 @@ The evaluation comparison table is the centerpiece deliverable, not the model co
 ## Preview
 
 <p align="center">
-  <img src="docs/screenshots/ui-select-viewer.png" width="720" alt="Streamlit UI showing the persona selector with four curated viewers and a real-user-ID browser">
+  <img src="images/main_ui.png" width="720" alt="Streamlit UI showing the persona selector with four curated viewers and a real-user-ID browser">
   <br>
-  <sub><em>Screen 1, curated personas (genre-profiled real users) or browse by any real MovieLens user ID.</em></sub>
+  <sub><em>Main UI screen, curated personas (genre-profiled real users) or browse by any real MovieLens user ID.</em></sub>
 </p>
+
+Additional screenshots (`choose_viewer.png`, `recommendations.png`, `model_performace.png`) are in [`assets/`](assets/) using that name convention, one per dashboard view.
 
 ## What this is
 
@@ -18,8 +20,8 @@ Given the MovieLens 25M dataset, the pipeline:
 
 1. Converts explicit ratings to implicit feedback (rating ≥ 4) and splits train/test on a single **global timestamp cutoff**, never a per-user-only split, a per-user-only leave-last-N-out split can still leak future signal across users even when each individual user's split looks correct in isolation.
 2. Builds the evaluation harness (Recall@K, NDCG@K, MAP@K, coverage, intra-list diversity) **before** any model exists, and every model is scored through that same harness, same protocol, no exceptions.
-3. Trains 5 approaches, popularity, item-item CF, ALS/BPR, a two-tower neural retriever, and SASRec, the first three on CPU locally, the neural two on free-tier Colab/Kaggle GPU with checkpoint resume across quota interruptions.
-4. Retrieves candidates via FAISS (CPU, local index) over the neural embeddings, excludes whatever the user has already interacted with, then re-ranks the survivors with LightGBM using embedding similarity, recency, popularity, user activity, and genre match as features. Every approach in this project excludes already-seen items this way, popularity/item-item CF/ALS internally, the FAISS+LightGBM path via `seen_items` on `build_features_for_candidates`, so no model can recommend something the user has already watched.
+3. Trains 5 approaches, popularity, item-item CF, ALS/BPR, a two-tower neural retriever, and SASRec, the first three on CPU locally, the neural two on free-tier Colab/Kaggle GPU.
+4. Retrieves candidates via FAISS (CPU, local index) over the neural embeddings, excludes whatever the user has already interacted with, then re-ranks the survivors with LightGBM using embedding similarity, recency, popularity, user activity, and genre match as features.
 5. Serves the production path (two-tower + ranker) via FastAPI, and separately compares all 5 approaches side-by-side in a Streamlit UI, both reading only cached local artifacts, no live model calls at request time.
 
 ## Architecture
@@ -80,30 +82,8 @@ A few specific failure modes this pipeline was built and tested to survive, not 
 
 - **RAM-safe item-item CF**, sparse similarity computed in row-blocks, top-K bounded per item, verified to stay under 200MB at 8k items / 112k interactions rather than the ~15GB a naive dense matrix would need at full catalog scale.
 - **Split leakage**, a single global timestamp cutoff, not a per-user-only split; unit-tested against a synthetic dataset specifically constructed so a per-user split would pass but a global-cutoff check would catch the leak.
-- **NaN embeddings degrade gracefully, everywhere**, a malformed embedding makes FAISS return zero search results for that one user. The ranker-training step skips that user instead of crashing a multi-million-row build; the live serving/UI query path returns an empty recommendation list instead of raising. Both paths verified against real injected-NaN data, not just reasoned about. This graceful-degradation path exists because, historically, `check_embeddings_for_nan.py` had something real to catch: SASRec's attention masking had a bug that produced NaN hidden states for any sequence shorter than `max_seq_len`, close to every user (see "SASRec masking fix" below). That root cause is now fixed, not just degraded around, but the defensive skip/empty-list handling stays in place, a clean embedding pipeline shouldn't need it, but nothing downstream should trust that blindly either.
+- **NaN embeddings degrade gracefully, everywhere**, a malformed embedding makes FAISS return zero search results for that one user. The ranker-training step skips that user instead of crashing a multi-million-row build; the live serving/UI query path returns an empty recommendation list instead of raising. Both paths verified against real injected-NaN data, not just reasoned about.
 - **Checkpoint resume**, both neural models save every epoch and resume from the last completed one on restart, including the embedding dimension and full ID-to-index mapping, so a resumed run can't silently reconstruct the model with mismatched shapes.
-
-## SASRec masking fix
-
-`src/models/sasrec.py`'s attention masking used to pass a causal mask and a padding mask to `nn.TransformerEncoder` separately and let PyTorch combine them. That combination gives a padding query position zero valid keys (a fully-masked attention row), so softmax produces NaN there. With this model's 2 encoder layers, that NaN becomes a *key's value* for real (non-padded) positions in the next layer, and even though the attention weight assigned to a NaN key is correctly ~0, the weighted sum is still NaN, `0 * NaN = NaN` in IEEE floating point regardless of how small the weight is. Confirmed empirically: every sequence length except a perfectly full `max_seq_len` (i.e. nearly every real user) hit this, corrupting both training (NaN loss/gradients on nearly every batch) and `export_embeddings` output.
-
-Fixed by building one explicit combined mask (`build_attention_mask` in `src/models/sasrec.py`) that always leaves a position's own diagonal entry unmasked. This is a no-op for real positions, but guarantees no attention row is ever fully masked, so no NaN is produced in the first place, verified bit-identical to the old output wherever the old output wasn't NaN, and NaN-free across every sequence length from 1 through `max_seq_len` after the fix.
-
-**If you already have a checkpoint trained with the old code**, the bug lives in the forward pass, not necessarily in the trained weights, check before retraining:
-```bash
-python -c "
-import torch
-ckpt = torch.load('path/to/sasrec.pt', map_location='cpu', weights_only=False)
-nan_params = [k for k, v in ckpt['model_state'].items() if torch.isnan(v).any()]
-print('NaN parameters:', nan_params or 'none')
-"
-```
-If that prints `none`, the weights are fine, just re-export:
-```bash
-python scripts/reexport_sasrec_embeddings.py --checkpoint-path path/to/sasrec.pt
-python scripts/check_embeddings_for_nan.py data/processed/sasrec_user_embeddings.parquet
-```
-If it lists parameters, the weights are already NaN-corrupted and you'll need to retrain from scratch, `scripts/train_sasrec.py` needs no changes for this, it already calls into the fixed `SASRec.forward`.
 
 ## Cold start
 
@@ -122,41 +102,49 @@ FastAPI (production path: two-tower + ranker) and the Streamlit UI (all 5 approa
 ```
 recsys-movielens/
 ├── data/
-│   ├── raw/                    # gitignored, MovieLens 25M CSVs
-│   └── processed/              # gitignored, parquet artifacts
+│   ├── raw/                             # gitignored, MovieLens 25M CSVs
+│   └── processed/                       # gitignored, parquet artifacts
+│
 ├── src/
-│   ├── data/                     # ingestion, temporal split, persona curation
-│   ├── eval/                      # metrics harness, MLflow/Dagshub tracking
+│   ├── data/                            # ingestion, temporal split, persona curation
+│   ├── eval/                            # metrics harness, MLflow/Dagshub tracking
+│   │
 │   ├── models/
-│   │   ├── baseline.py              # popularity, item-item CF
-│   │   ├── mf.py                     # ALS/BPR
-│   │   ├── two_tower.py               # trained on Colab/Kaggle
-│   │   └── sasrec.py                  # trained on Colab/Kaggle
-│   ├── ranking/                   # LightGBM ranker + feature engineering
-│   ├── retrieval/                 # FAISS index build + query
-│   └── serving/                   # FastAPI app
+│   │   ├── baseline.py                  # popularity, item-item CF
+│   │   ├── mf.py                        # ALS/BPR
+│   │   ├── two_tower.py                 # trained on Colab/Kaggle
+│   │   └── sasrec.py                    # trained on Colab/Kaggle
+│   │
+│   ├── ranking/                         # LightGBM ranker + feature engineering
+│   ├── retrieval/                       # FAISS index build + query
+│   └── serving/                         # FastAPI app
+│
 ├── ui/
-│   ├── app.py                    # Streamlit entrypoint, run: streamlit run ui/app.py
-│   ├── components.py             # shared page header, KPI cards, empty states, genre icons
+│   ├── screens/                         # persona selector, recommendations, dashboard
+│   ├── app.py                           # Streamlit entrypoint, run: streamlit run ui/app.py
+│   ├── components.py                    # shared page header, KPI cards, empty states, genre icons
 │   ├── data_access.py
-│   ├── styles.py                 # design tokens + custom CSS, "marquee" palette
-│   └── screens/                  # persona selector, recommendations, dashboard
-├── .streamlit/
-│   └── config.toml                # pins Streamlit's native theme to match ui/styles.py
+│   └── styles.py                        # design tokens + custom CSS, "marquee" palette
+│
+├── .streamlit/config.toml               # pins Streamlit's native theme to match ui/styles.py
+│
 ├── scripts/
 │   ├── run_phase1.py                    # ingest → split → baselines → harness
 │   ├── train_two_tower.py               # Colab/Kaggle entrypoint
 │   ├── train_sasrec.py                  # Colab/Kaggle entrypoint
 │   ├── build_serving_artifacts.py       # FAISS + ranker for FastAPI's production path
 │   ├── build_ui_artifacts.py            # per-model FAISS + ranker for the UI's 5-way comparison
-│   ├── evaluate_pipeline_models.py      # scores two-tower/SASRec through the harness, appends to comparison_table.csv
+│   ├── evaluate_pipeline_models.py      # scores two-tower/SASRec through the harness
 │   ├── curate_personas.py               # picks real users for the UI's curated personas
 │   ├── run_cold_start.py                # Gemini batch embedding job
 │   ├── check_embeddings_for_nan.py      # diagnostic for embedding parquet files
 │   ├── reexport_sasrec_embeddings.py    # re-export from an existing checkpoint without retraining
 │   └── generate_demo_artifacts.py       # synthetic data, for UI development only
+│
 ├── tests/
-├── results/                      # comparison table, committed
+├── results/                             # comparison table, committed
+│
+├── .gitignore
 ├── requirements.txt
 └── README.md
 ```
@@ -210,6 +198,4 @@ pytest tests/ -v
 ## Known limitations
 
 - **The committed comparison table currently scores the 3 CPU baselines only.** `run_phase1.py` evaluates popularity, item-item CF, and ALS/BPR through the harness and writes those 3 rows. The harness now *can* score the two-tower and SASRec retrieval+ranking pipeline too, `scripts/evaluate_pipeline_models.py` wraps each as a `recommend(user_id, k)` model (FAISS retrieval, seen-item exclusion, LightGBM re-rank) and appends harness-scored rows to `results/comparison_table.csv` the same way `run_phase1.py` does for the baselines. It just hasn't been run against a real trained two-tower/SASRec checkpoint in this repo state, since that requires Colab/Kaggle GPU time this environment doesn't have. Run `build_ui_artifacts.py` then `evaluate_pipeline_models.py` after training both neural models to populate all 5 rows.
-- **Gemini's free-tier cold-start quota has changed more than once** through 2025–2026; `run_cold_start.py` defaults conservatively and retries with backoff, but check current limits before a large run rather than trusting the number in this README.
-- **`generate_demo_artifacts.py` produces synthetic data for UI development only**, plausible-looking titles, ALS-derived embeddings standing in for the neural models. Useful for iterating on the UI without waiting on a full pipeline run; not a substitute for the real evaluation. It mirrors the real pipeline's leakage-safe ranker supervision and seen-item filtering, so demo-mode results stay representative of what the real pipeline does, not just visually similar.
 - **MovieLens 25M is a static, historical snapshot**, ratings stop at the dataset's collection date. The comparison table reflects relative model quality on that snapshot, not current catalog or taste trends.

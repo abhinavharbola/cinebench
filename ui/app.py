@@ -18,7 +18,7 @@ import streamlit as st
 from ui.screens import dashboard, persona_selector, recommendations
 from ui.styles import inject_custom_css
 
-st.set_page_config(page_title="ReelBench \u2014 MovieLens Recommender", page_icon="\U0001F3AC", layout="wide")
+st.set_page_config(page_title="ReelBench: MovieLens Recommender", page_icon="\U0001F3AC", layout="wide")
 st.markdown(inject_custom_css(), unsafe_allow_html=True)
 
 if "selected_user_id" not in st.session_state:
@@ -27,14 +27,14 @@ if "selected_user_id" not in st.session_state:
 with st.sidebar:
     st.markdown('<div class="mc-wordmark">Reel<span>Bench</span></div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="mc-sidebar-tagline">A two-stage recommender benchmark on MovieLens 25M: '
+        '<div class="mc-sidebar-tagline">A two-stage recommender benchmark on MovieLens 25M. '
         '5 approaches, one shared evaluation harness.</div>',
         unsafe_allow_html=True,
     )
 
     screen = st.radio(
         "Navigate",
-        options=["Select Viewer", "Recommendations", "Model Performance"],
+        options=["Select Viewer", "Recommendations", "Model Metrics"],
         label_visibility="collapsed",
     )
 
