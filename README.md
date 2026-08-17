@@ -91,9 +91,6 @@ A one-time batch job embeds movie titles + genres with Gemini's free-tier embedd
 
 These content embeddings live in a completely different vector space than the two-tower/SASRec learned embeddings, nothing ties the two spaces together, so they can't be merged into the main retrieval FAISS index. Instead `build_serving_artifacts.py` builds a second, standalone FAISS index purely over the cold-start embeddings, and `src/serving/app.py` exposes it as `GET /similar/{movie_id}`, a content-based "more like this" lookup that works even for items with too little interaction history for a meaningful two-tower embedding.
 
-Gemini's free-tier rate limits have changed more than once; the script defaults to a conservative request rate and retries with exponential backoff rather than trusting a hardcoded number.
-Check current limits before running: https://ai.google.dev/gemini-api/docs/rate-limits
-
 ## Serving
 
 FastAPI (production path: two-tower + ranker) and the Streamlit UI (all 5 approaches, side-by-side) both read only local cached artifacts, FAISS index, ranker model, embedding parquet files. No live external API calls at request time, in either surface.
