@@ -1,4 +1,4 @@
-# ReelBench: Multi-Stage Movie Recommender Benchmark
+# ReelBench: Multi-Stage Recommender Benchmark
 
 A production-style two-stage recommender system (candidate retrieval + ranking) on MovieLens 25M- benchmarking 5 approaches head-to-head under one evaluation harness. Trained on free-tier GPU (Colab/Kaggle), served entirely on CPU-only hardware.
 
